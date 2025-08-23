@@ -190,7 +190,14 @@ def index():
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; }
-        .hero { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 100px 0; text-align: center; }
+        .hero { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 80px 0; text-align: center; position: relative; overflow: hidden; min-height: 600px; }
+        .hero::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); z-index: 1; }
+        .hero-content { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; max-width: 1400px; margin: 0 auto; padding: 0 20px; min-height: 500px; }
+        .hero-text { flex: 1; text-align: left; padding-right: 40px; }
+        .hero-photo { flex: 0 0 500px; margin-left: 30px; }
+        .hero-avatar { width: 500px; height: 500px; border-radius: 25px; background-image: url('/images/nirmala.webp'); background-size: cover; background-position: center; box-shadow: 0 25px 50px rgba(0,0,0,0.4); border: 8px solid rgba(255,255,255,0.2); transition: transform 0.3s ease; }
+        .hero-avatar:hover { transform: scale(1.03) rotate(1deg); }
+        @media (max-width: 768px) { .hero-content { flex-direction: column; text-align: center; min-height: auto; } .hero-photo { margin: 30px 0 0 0; flex: 0 0 300px; } .hero-avatar { width: 300px; height: 300px; } }
         .hero h1 { font-size: 3.5em; margin-bottom: 20px; }
         .hero p { font-size: 1.3em; margin-bottom: 40px; opacity: 0.9; }
         .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
@@ -210,10 +217,17 @@ def index():
         .footer { background: #2d3748; color: white; padding: 40px 0; text-align: center; }
         
         /* Upload section styles */
-        .upload-section { background: white; margin: 50px auto; max-width: 800px; border-radius: 15px; padding: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
-        .upload-area { border: 3px dashed #667eea; border-radius: 15px; padding: 40px; text-align: center; background: #f8f9ff; transition: all 0.3s; }
+        .upload-section { background: white; margin: 50px auto; max-width: 1100px; border-radius: 15px; padding: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative; }
+        .upload-container { display: flex; align-items: center; justify-content: center; gap: 40px; }
+        .upload-area { border: 3px dashed #667eea; border-radius: 15px; padding: 40px; text-align: center; background: #f8f9ff; transition: all 0.3s; max-width: 500px; flex: 1; }
         .upload-area:hover { background: #f0f3ff; transform: scale(1.02); }
         .upload-area.dragover { background: #e8f2ff; border-color: #5a67d8; }
+        .side-image { width: 150px; height: 150px; background-image: url('/images/sigham.webp'); background-size: cover; background-position: center; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); transition: transform 0.3s ease; border: 3px solid #667eea; }
+        .side-image:hover { transform: scale(1.05) rotate(2deg); }
+        .side-image.left { animation: float 3s ease-in-out infinite; }
+        .side-image.right { animation: float 3s ease-in-out infinite reverse; }
+        @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-10px); } }
+        @media (max-width: 768px) { .upload-container { flex-direction: column; } .side-image { display: none; } }
         .file-input { margin: 20px 0; padding: 15px; border: 2px solid #ddd; border-radius: 10px; font-size: 16px; width: 300px; }
         .btn-upload { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
         .btn-test { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); }
@@ -235,11 +249,16 @@ def index():
 </head>
 <body>
     <div class="hero">
-        <div class="container">
-            <h1>🛡️ FraudGuard Enterprise</h1>
-            <p>AI-Powered Fraud Detection for Banks, Fintech Startups & Payment Processors</p>
-            <button class="btn" onclick="scrollToUpload()">Try Demo Upload</button>
-            <button class="btn btn-secondary" onclick="scrollToPricing()">View Pricing</button>
+        <div class="hero-content">
+            <div class="hero-text">
+                <h1>🛡️Fraud Karega Sale</h1>
+                <h1>Tere se bhi Tax Katungi</h1>
+                <button class="btn" onclick="scrollToUpload()">Try Demo Upload</button>
+                <button class="btn btn-secondary" onclick="scrollToPricing()">View Pricing</button>
+            </div>
+            <div class="hero-photo">
+                <div class="hero-avatar" title="Fraud Detection Expert"></div>
+            </div>
         </div>
     </div>
     
@@ -248,13 +267,22 @@ def index():
         <h2 style="text-align: center; margin-bottom: 30px; color: #667eea;">🔍 Upload & Analyze Fraud Data</h2>
         <p style="text-align: center; margin-bottom: 30px; color: #666;">Upload any CSV transaction file - our AI automatically detects format and finds fraud</p>
         
-        <div class="upload-area" id="uploadArea">
-            <h3>📁 Drop your CSV file here or click to browse</h3>
-            <p style="margin: 20px 0; color: #666;">Supports: UPI, Credit Card, Generic Transaction Data (up to 500MB)</p>
-            <input type="file" id="csvFile" accept=".csv" class="file-input">
-            <br>
-            <button class="btn btn-upload" id="uploadBtn" onclick="uploadFile()">📤 Upload File</button>
-            <button class="btn btn-test" id="testBtn" onclick="testUploadedFile()" style="display:none;">⚡ Analyze for Fraud</button>
+        <div class="upload-container">
+            <!-- Left Square Image -->
+            <div class="side-image left" title="Security Expert"></div>
+            
+            <!-- Main Upload Area -->
+            <div class="upload-area" id="uploadArea">
+                <h3>📁 Drop your CSV file here or click to browse</h3>
+                <p style="margin: 20px 0; color: #666;">Supports: UPI, Credit Card, Generic Transaction Data (up to 500MB)</p>
+                <input type="file" id="csvFile" accept=".csv" class="file-input">
+                <br>
+                <button class="btn btn-upload" id="uploadBtn" onclick="uploadFile()">📤 Upload File</button>
+                <button class="btn btn-test" id="testBtn" onclick="testUploadedFile()" style="display:none;">⚡ Analyze for Fraud</button>
+            </div>
+            
+            <!-- Right Square Image -->
+            <div class="side-image right" title="Fraud Detective"></div>
         </div>
         
         <div id="statusSection" class="status">
@@ -704,6 +732,16 @@ def get_results(task_id):
         print(f"Results error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/images/<filename>')
+def serve_image(filename):
+    """Serve images from the images folder"""
+    try:
+        from flask import send_from_directory
+        return send_from_directory('images', filename)
+    except Exception as e:
+        print(f"Image serving error: {str(e)}")
+        return "Image not found", 404
+
 @app.route('/dashboard/<task_id>')
 def fraud_dashboard(task_id):
     """Enhanced fraud dashboard with AI explanations"""
@@ -751,8 +789,8 @@ def fraud_dashboard(task_id):
 <body>
     <div class="header">
         <h1>🛡️ FraudGuard AI Dashboard</h1>
-        <p>Comprehensive Fraud Analysis with AI Explanations</p>
-        {"<span class='ai-badge'>🤖 AI-Powered Explanations</span>" if results.get('ai_enabled') else ""}
+        <h1>Pakda Gya Sale..AI he 😏😏</h1>
+        {"<span class='ai-badge'>🤖 Ab tera bhai bataayega fraud kaha hua he</span>" if results.get('ai_enabled') else ""}
     </div>
     
     <div class="container">
