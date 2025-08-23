@@ -50,7 +50,7 @@ class LLMFraudAnalyzer:
         
         if self.api_provider == "openai" and self.api_key:
             openai.api_key = self.api_key
-        elif api_provider == "gemini" and self.api_key and GEMINI_AVAILABLE:
+        elif self.api_provider == "gemini" and self.api_key and GEMINI_AVAILABLE:
             genai.configure(api_key=self.api_key)
         
         self.setup_provider()
