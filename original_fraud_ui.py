@@ -11,15 +11,61 @@ import threading
 import time
 import traceback
 
+# Try to import LLM components (optional)
+try:
+    from llm_integration import LLMFraudAnalyzer, LLMEnhancedFraudUI
+    LLM_AVAILABLE = True
+except ImportError:
+    LLM_AVAILABLE = False
+
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
+
+# Initialize LLM integration (optional)
+llm_enabled = False
+llm_analyzer = None
+llm_ui = None
+
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    print("💡 Install python-dotenv for better environment variable support: pip install python-dotenv")
+
+if LLM_AVAILABLE:
+    # Try Gemini first using environment variable
+    try:
+        print("🤖 Initializing Gemini AI...")
+        llm_analyzer = LLMFraudAnalyzer(api_provider="gemini")  # Will use GEMINI_API_KEY from .env
+        llm_ui = LLMEnhancedFraudUI(llm_analyzer)
+        llm_enabled = True
+        print("🤖 LLM integration enabled with Gemini AI")
+    except Exception as e:
+        print(f"⚠️ Gemini failed: {e}")
+        # Fallback to Ollama if Gemini fails
+        try:
+            print("🔄 Falling back to Ollama...")
+            llm_analyzer = LLMFraudAnalyzer(api_provider="ollama")
+            llm_ui = LLMEnhancedFraudUI(llm_analyzer)
+            llm_enabled = True
+            print("🤖 LLM integration enabled with Ollama")
+        except Exception as e2:
+            llm_enabled = False
+            print(f"⚠️ All LLM providers failed: Gemini: {e}, Ollama: {e2}")
+else:
+    print("⚠️ LLM components not found - running without AI features")
+    llm_ui = None
+    llm_enabled = False
+    llm_enabled = False
+    print(f"⚠️ LLM integration disabled: {e}")
 
 # Global storage for analysis results
 analysis_results = {}
 analysis_status = {}
 
 def background_analysis(task_id, file_path):
-    """Run fraud analysis in background"""
+    """Run fraud analysis in background with AI explanations"""
     try:
         analysis_status[task_id] = "Processing"
         print(f"Starting analysis for task {task_id}")
@@ -30,14 +76,88 @@ def background_analysis(task_id, file_path):
         detector = UniversalFraudDetector()
         results_df = detector.analyze_dataset(file_path, save_results=False)
         
-        # Store results
+        # Get all fraud cases for detailed analysis
+        fraud_cases = results_df[results_df['fraud_prediction'] == 1].copy()
+        
+        # Prepare detailed fraud analysis with AI explanations
+        detailed_frauds = []
+        
+        print(f"🤖 Generating AI explanations for {len(fraud_cases)} fraud cases...")
+        
+        for idx, (_, fraud_case) in enumerate(fraud_cases.iterrows()):
+            if idx >= 50:  # Limit to first 50 for performance
+                break
+                
+            # Prepare transaction data for LLM
+            transaction_data = fraud_case.to_dict()
+            
+            # Generate AI explanation if LLM is available
+            ai_explanation = ""
+            risk_factors = []
+            
+            if llm_enabled and llm_analyzer:
+                try:
+                    # Create feature importance based on fraud probability
+                    feature_importance = {
+                        'fraud_probability': float(fraud_case['fraud_probability']),
+                        'amount': float(fraud_case.get('amount', fraud_case.get('amt', 0))),
+                        'transaction_type': str(fraud_case.get('transaction_type', 'Unknown')),
+                        'location': str(fraud_case.get('location', fraud_case.get('merchant', 'Unknown')))
+                    }
+                    
+                    # Generate AI explanation
+                    ai_explanation = llm_analyzer.explain_fraud_decision(
+                        transaction_data=transaction_data,
+                        prediction=1,
+                        confidence=float(fraud_case['fraud_probability'] * 100),
+                        feature_importance=feature_importance
+                    )
+                    
+                    # Extract risk factors for summary
+                    if 'amount' in transaction_data and transaction_data['amount'] > 10000:
+                        risk_factors.append("High Amount")
+                    if 'hour' in transaction_data and (transaction_data['hour'] < 6 or transaction_data['hour'] > 22):
+                        risk_factors.append("Off-Hours Transaction")
+                    if fraud_case['fraud_probability'] > 0.9:
+                        risk_factors.append("Very High ML Score")
+                        
+                except Exception as e:
+                    ai_explanation = f"AI analysis unavailable: {str(e)}"
+                    print(f"LLM error for case {idx}: {e}")
+            else:
+                ai_explanation = "AI explanations disabled - LLM not available"
+                
+            # Rule-based risk factor identification
+            if not risk_factors:
+                if fraud_case['fraud_probability'] > 0.8:
+                    risk_factors.append("High Risk Score")
+                if 'amount' in fraud_case and fraud_case['amount'] > 5000:
+                    risk_factors.append("Large Transaction")
+                if 'failed' in str(fraud_case.get('status', '')).lower():
+                    risk_factors.append("Failed Transaction")
+            
+            detailed_fraud = {
+                'index': int(fraud_case.name),
+                'probability': float(fraud_case['fraud_probability']),
+                'amount': float(fraud_case.get('amount', fraud_case.get('amt', 0))),
+                'transaction_data': transaction_data,
+                'ai_explanation': ai_explanation,
+                'risk_factors': risk_factors,
+                'severity': 'CRITICAL' if fraud_case['fraud_probability'] > 0.9 else 'HIGH' if fraud_case['fraud_probability'] > 0.7 else 'MEDIUM'
+            }
+            detailed_frauds.append(detailed_fraud)
+        
+        # Store comprehensive results
         analysis_results[task_id] = {
             'dataset_type': detector.dataset_type,
             'total_transactions': len(results_df),
             'fraud_detected': int(results_df['fraud_prediction'].sum()),
             'fraud_rate': float(results_df['fraud_prediction'].mean() * 100),
             'high_risk_count': int((results_df['fraud_probability'] > 0.7).sum()),
-            'top_fraud_cases': results_df[results_df['fraud_prediction'] == 1].nlargest(5, 'fraud_probability').to_dict('records'),
+            'critical_risk_count': int((results_df['fraud_probability'] > 0.9).sum()),
+            'detailed_frauds': detailed_frauds,
+            'ai_enabled': llm_enabled,
+            'analysis_summary': f"Analyzed {len(results_df)} transactions, detected {len(fraud_cases)} potential fraud cases with AI explanations"
         }
         
         # Calculate total fraud amount if amount column exists
@@ -48,7 +168,7 @@ def background_analysis(task_id, file_path):
             analysis_results[task_id]['total_fraud_amount'] = fraud_amount
         
         analysis_status[task_id] = "Completed"
-        print(f"Analysis completed for task {task_id}")
+        print(f"Analysis completed for task {task_id} with {len(detailed_frauds)} detailed fraud explanations")
         
         # Clean up file
         if os.path.exists(file_path):
@@ -451,9 +571,17 @@ def index():
                     </div>
                     
                     <div style="margin-top: 30px;">
-                        <h3>🔍 Top Fraud Cases Detected</h3>
-                        <p style="color: #666; margin-bottom: 20px;">Showing highest-risk transactions identified by our AI:</p>
-                        ${data.top_fraud_cases.map((fraudCase, index) => `
+                        <h3>🔍 Fraud Detection Summary</h3>
+                        <p style="color: #666; margin-bottom: 20px;">Quick overview of detected fraud cases:</p>
+                        ${data.detailed_frauds ? data.detailed_frauds.slice(0, 3).map((fraudCase, index) => `
+                            <div class="fraud-item">
+                                <strong>🚨 ${fraudCase.severity} Risk Case #${fraudCase.index}:</strong> 
+                                <span style="color: #e74c3c; font-weight: bold;">Risk Score: ${(fraudCase.probability * 100).toFixed(1)}%</span>
+                                | Amount: $${fraudCase.amount.toLocaleString()}
+                                <br><small style="color: #6c757d;">Risk Factors: ${fraudCase.risk_factors.slice(0, 2).join(', ')}</small>
+                                ${fraudCase.ai_explanation ? '<br><small style="color: #667eea;">🤖 AI Analysis Available</small>' : ''}
+                            </div>
+                        `).join('') : (data.top_fraud_cases || []).map((fraudCase, index) => `
                             <div class="fraud-item">
                                 <strong>🚨 High-Risk Case ${index + 1}:</strong> 
                                 <span style="color: #e74c3c; font-weight: bold;">Risk Score: ${(fraudCase.fraud_probability * 100).toFixed(1)}%</span>
@@ -463,6 +591,13 @@ def index():
                                 <br><small style="color: #6c757d;">AI Confidence: ${fraudCase.fraud_probability > 0.9 ? 'Very High' : fraudCase.fraud_probability > 0.7 ? 'High' : 'Medium'}</small>
                             </div>
                         `).join('')}
+                        
+                        <div style="text-align: center; margin: 30px 0;">
+                            <a href="/dashboard/${taskId}" class="btn" style="background: #e74c3c; font-size: 1.2em; padding: 15px 30px;">
+                                🛡️ View Complete AI Fraud Dashboard
+                            </a>
+                            ${data.ai_enabled ? '<br><small style="color: #667eea; margin-top: 10px;">🤖 Includes detailed AI explanations for all fraud cases</small>' : ''}
+                        </div>
                     </div>
                     
                     <div style="text-align: center; margin-top: 40px; padding: 30px; background: linear-gradient(135deg, #e8f5e8 0%, #d4edda 100%); border-radius: 15px;">
@@ -570,6 +705,120 @@ def get_results(task_id):
     except Exception as e:
         print(f"Results error: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/dashboard/<task_id>')
+def fraud_dashboard(task_id):
+    """Enhanced fraud dashboard with AI explanations"""
+    if task_id not in analysis_results:
+        return "Results not found", 404
+        
+    results = analysis_results[task_id]
+    
+    return f'''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FraudGuard AI Dashboard - Detailed Fraud Analysis</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f7fa; color: #333; }}
+        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px 0; text-align: center; }}
+        .container {{ max-width: 1400px; margin: 0 auto; padding: 20px; }}
+        .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin: 30px 0; }}
+        .stat-card {{ background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }}
+        .stat-number {{ font-size: 2.5em; font-weight: bold; color: #667eea; margin-bottom: 10px; }}
+        .stat-label {{ color: #666; font-size: 1.1em; }}
+        .fraud-list {{ background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin: 30px 0; }}
+        .fraud-header {{ background: #667eea; color: white; padding: 20px; border-radius: 12px 12px 0 0; }}
+        .fraud-item {{ border-bottom: 1px solid #eee; padding: 25px; }}
+        .fraud-item:last-child {{ border-bottom: none; }}
+        .fraud-title {{ font-size: 1.2em; font-weight: bold; margin-bottom: 15px; color: #333; }}
+        .fraud-meta {{ display: flex; gap: 20px; margin-bottom: 15px; flex-wrap: wrap; }}
+        .fraud-tag {{ background: #fee; color: #c53030; padding: 5px 12px; border-radius: 20px; font-size: 0.9em; }}
+        .fraud-tag.critical {{ background: #fed7d7; color: #c53030; }}
+        .fraud-tag.high {{ background: #fef5e7; color: #dd6b20; }}
+        .fraud-tag.medium {{ background: #fefcbf; color: #d69e2e; }}
+        .ai-explanation {{ background: #f7fafc; border-left: 4px solid #667eea; padding: 20px; margin: 15px 0; border-radius: 0 8px 8px 0; }}
+        .risk-factors {{ display: flex; gap: 10px; flex-wrap: wrap; margin: 15px 0; }}
+        .risk-factor {{ background: #e2e8f0; color: #2d3748; padding: 8px 12px; border-radius: 15px; font-size: 0.9em; }}
+        .transaction-details {{ background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 15px 0; font-family: monospace; font-size: 0.9em; }}
+        .btn {{ background: #667eea; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-block; margin: 10px 5px; }}
+        .btn:hover {{ background: #5a67d8; }}
+        .pagination {{ text-align: center; margin: 30px 0; }}
+        .ai-badge {{ background: #38a169; color: white; padding: 5px 10px; border-radius: 12px; font-size: 0.8em; margin-left: 10px; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛡️ FraudGuard AI Dashboard</h1>
+        <p>Comprehensive Fraud Analysis with AI Explanations</p>
+        {"<span class='ai-badge'>🤖 AI-Powered Explanations</span>" if results.get('ai_enabled') else ""}
+    </div>
+    
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">{results['total_transactions']:,}</div>
+                <div class="stat-label">Total Transactions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" style="color: #e53e3e;">{results['fraud_detected']:,}</div>
+                <div class="stat-label">Fraud Cases Detected</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" style="color: #dd6b20;">{results['fraud_rate']:.2f}%</div>
+                <div class="stat-label">Fraud Rate</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" style="color: #c53030;">{results.get('critical_risk_count', 0):,}</div>
+                <div class="stat-label">Critical Risk Cases</div>
+            </div>
+            {"<div class='stat-card'><div class='stat-number' style='color: #38a169;'>${:,.2f}</div><div class='stat-label'>Total Fraud Amount</div></div>".format(results['total_fraud_amount']) if 'total_fraud_amount' in results else ""}
+        </div>
+        
+        <div class="fraud-list">
+            <div class="fraud-header">
+                <h2>🚨 Detailed Fraud Analysis ({len(results.get('detailed_frauds', []))} cases shown)</h2>
+                <p>{results.get('analysis_summary', 'Comprehensive fraud detection analysis')}</p>
+            </div>
+            
+            {"".join([f'''
+            <div class="fraud-item">
+                <div class="fraud-title">
+                    🚨 Fraud Case #{fraud['index']} - {fraud['severity']} Risk
+                    <span class="fraud-tag {fraud['severity'].lower()}">{fraud['probability']:.1%} Confidence</span>
+                </div>
+                
+                <div class="fraud-meta">
+                    <span><strong>Amount:</strong> ${fraud['amount']:,.2f}</span>
+                    <span><strong>Severity:</strong> {fraud['severity']}</span>
+                    <span><strong>ML Confidence:</strong> {fraud['probability']:.1%}</span>
+                </div>
+                
+                {"<div class='risk-factors'>" + "".join([f"<span class='risk-factor'>⚠️ {factor}</span>" for factor in fraud['risk_factors']]) + "</div>" if fraud['risk_factors'] else ""}
+                
+                {"<div class='ai-explanation'><h4>🤖 AI Analysis:</h4><p>" + fraud['ai_explanation'].replace('\n', '<br>') + "</p></div>" if fraud['ai_explanation'] and not fraud['ai_explanation'].startswith('AI') else ""}
+                
+                <details>
+                    <summary style="cursor: pointer; font-weight: bold; margin: 10px 0;">📊 View Transaction Details</summary>
+                    <div class="transaction-details">
+                        {"<br>".join([f"<strong>{k}:</strong> {v}" for k, v in fraud['transaction_data'].items() if k not in ['fraud_prediction', 'fraud_probability']])}
+                    </div>
+                </details>
+            </div>
+            ''' for fraud in results.get('detailed_frauds', [])[:20]])}
+        </div>
+        
+        <div class="pagination">
+            <a href="/" class="btn">🏠 Back to Home</a>
+            <a href="/results/{task_id}" class="btn">📊 Raw JSON Results</a>
+        </div>
+    </div>
+</body>
+</html>
+    '''
 
 if __name__ == '__main__':
     print("🛡️ Starting FraudGuard Enterprise...")
