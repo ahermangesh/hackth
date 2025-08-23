@@ -8,8 +8,15 @@ import os
 import sys
 from llm_integration import LLMFraudAnalyzer
 
-# Set your Gemini API key
-GEMINI_API_KEY = "REDACTED_API_KEY"
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    print("💡 Install python-dotenv: pip install python-dotenv")
+
+# Set your Gemini API key from environment variable
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 def test_gemini_integration():
     """Test Gemini AI integration"""

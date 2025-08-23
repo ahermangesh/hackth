@@ -1,3 +1,12 @@
+# 🔒 Security - Environment & Sensitive Files (CRITICAL!)
+.env
+.env.local
+.env.production
+.env.staging
+*.key
+*.pem
+config.ini
+
 # Large dataset files
 *.csv
 data/raw/creditcard.csv

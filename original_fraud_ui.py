@@ -57,8 +57,6 @@ else:
     print("⚠️ LLM components not found - running without AI features")
     llm_ui = None
     llm_enabled = False
-    llm_enabled = False
-    print(f"⚠️ LLM integration disabled: {e}")
 
 # Global storage for analysis results
 analysis_results = {}

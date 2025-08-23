@@ -24,10 +24,16 @@ app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
 
 # Initialize LLM capabilities
 try:
-    # Try different providers in order of preference (Gemini first with your API key)
-    gemini_api_key = "REDACTED_API_KEY"
+    # Load environment variables
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        print("💡 Install python-dotenv: pip install python-dotenv")
+    
+    # Try different providers in order of preference (Gemini first from environment)
     providers = [
-        ("gemini", gemini_api_key),
+        ("gemini", None),  # Will use GEMINI_API_KEY from .env
         ("ollama", None),
         ("openai", None),
         ("anthropic", None)
