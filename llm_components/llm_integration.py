@@ -157,7 +157,7 @@ class LLMFraudAnalyzer:
             analysis_results: Results from fraud detection analysis
         """
         
-        prompt = f"""
+        prompt = f"""';
         You are a senior fraud analyst. Create a comprehensive fraud detection report.
         
         Analysis Results:
