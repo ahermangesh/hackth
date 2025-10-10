@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: fraudguard-pro
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python modern_fraud_dashboard.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: PORT
+        value: 5000
+    autoDeploy: false

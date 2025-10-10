@@ -1,0 +1,11 @@
+{
+    "dark_mode": false,
+    "high_contrast": false,
+    "fraud_alerts": true,
+    "email_reports": false,
+    "auto_analysis": true,
+    "data_retention": false,
+    "google_api_key": "",
+    "alert_threshold": "low",
+    "working_model": "gemini-1.5-flash-latest"
+}
