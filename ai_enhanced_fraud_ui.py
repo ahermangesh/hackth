@@ -25,7 +25,7 @@ app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
 # Initialize LLM capabilities
 try:
     # Try different providers in order of preference (Gemini first with your API key)
-    gemini_api_key = "AIzaSyC_yR6AMBKl2zyKuzHm4GASUyuiXv23ceE"
+    gemini_api_key = your_api_key_here
     providers = [
         ("gemini", gemini_api_key),
         ("ollama", None),
